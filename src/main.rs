@@ -1,6 +1,7 @@
 use bevy::{
     input::keyboard::{ElementState, KeyboardInput},
     prelude::*,
+    winit::WinitWindows,
 };
 use doryen::{Console, TextAlign};
 
@@ -31,6 +32,7 @@ pub fn main() {
         .add_resource(MyRoguelike::new())
         .add_system(input.system())
         .add_system_to_stage(stage::POST_UPDATE, render.system())
+        .add_system_to_stage(stage::POST_UPDATE, draw.system())
         .run();
 }
 
@@ -94,6 +96,27 @@ fn render(game: Res<MyRoguelike>, mut con: ResMut<Console>) {
         "{}x{} / {}x{}",
         game.player_pos.0, game.player_pos.1, game.mouse_pos.0 as i32, game.mouse_pos.1 as i32
     );
+}
+
+fn draw(windows: Res<Windows>, winit_windows: Res<WinitWindows>) {
+    if let Some(window) = windows.get_primary() {
+        let winit_window = winit_windows.get_window(window.id()).unwrap();
+        println!("{:?}", *winit_window);
+        std::process::exit(0);
+
+        // app.add_system_to_stage(
+        //     bevy_render::stage::RENDER,
+        //     render_system.thread_local_system(),
+        // )
+        // https://github.com/jice-nospam/doryen-rs/blob/master/src/app.rs#L438
+        //
+        // https://github.com/bevyengine/bevy/blob/0dba0fe45f60cf06e802e5ff08710290ad7870d6/crates/bevy_wgpu/src/lib.rs#L24
+        // update: https://github.com/bevyengine/bevy/blob/0dba0fe45f60cf06e802e5ff08710290ad7870d6/crates/bevy_wgpu/src/wgpu_renderer.rs#L112
+        // https://github.com/bevyengine/bevy/blob/master/crates/bevy_wgpu/src/wgpu_renderer.rs#L66
+        // winit_window + https://github.com/rust-windowing/glutin/blob/master/glutin_examples/examples/raw_context.rs#L55
+        // https://github.com/grovesNL/glow/blob/main/examples/hello/src/main.rs#L73
+        // + pub window_surfaces: Arc<RwLock<HashMap<WindowId, wgpu::Surface>>>,
+    }
 }
 
 #[derive(Default)]
