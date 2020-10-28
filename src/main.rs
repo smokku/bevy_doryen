@@ -8,6 +8,8 @@ use doryen::{Console, TextAlign};
 const CONSOLE_WIDTH: u32 = 80;
 const CONSOLE_HEIGHT: u32 = 60;
 
+type ScreenConsole = (f32, f32, Console);
+
 struct MyRoguelike {
     player_pos: (i32, i32),
     mouse_pos: (f32, f32),
@@ -27,8 +29,7 @@ pub fn main() {
 
     App::build()
         .add_default_plugins()
-        .add_resource(Console::new(CONSOLE_WIDTH, CONSOLE_HEIGHT))
-        .add_startup_system(init.system())
+        .add_startup_system(init.thread_local_system())
         .add_resource(MyRoguelike::new())
         .add_system(input.system())
         .add_system_to_stage(stage::POST_UPDATE, render.system())
@@ -36,13 +37,18 @@ pub fn main() {
         .run();
 }
 
-fn init(mut con: ResMut<Console>) {
+fn init(_world: &mut World, resources: &mut Resources) {
+    let mut con = Console::new(CONSOLE_WIDTH, CONSOLE_HEIGHT);
+
     con.register_color("white", (255, 255, 255, 255));
     con.register_color("red", (255, 92, 92, 255));
     con.register_color("blue", (192, 192, 255, 255));
+
+    resources.insert(vec![(0.0f32, 0.0f32, con)]);
 }
 
-fn render(game: Res<MyRoguelike>, mut con: ResMut<Console>) {
+fn render(game: Res<MyRoguelike>, mut cons: ResMut<Vec<ScreenConsole>>) {
+    let con = &mut cons[0].2;
     con.rectangle(
         0,
         0,
@@ -102,7 +108,7 @@ fn draw(windows: Res<Windows>, winit_windows: Res<WinitWindows>) {
     if let Some(window) = windows.get_primary() {
         let winit_window = winit_windows.get_window(window.id()).unwrap();
         println!("{:?}", *winit_window);
-        std::process::exit(0);
+        // std::process::exit(0);
 
         // app.add_system_to_stage(
         //     bevy_render::stage::RENDER,
