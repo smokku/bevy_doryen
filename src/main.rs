@@ -38,6 +38,42 @@ pub fn main() {
 }
 
 fn init(_world: &mut World, resources: &mut Resources) {
+    let windows = resources.get::<Windows>().unwrap();
+    let window = windows.get_primary().unwrap();
+    let winit_windows = resources.get::<WinitWindows>().unwrap();
+    let winit_window = winit_windows.get_window(window.id()).unwrap();
+
+    use glutin::platform::unix::RawContextExt;
+    use glutin::ContextBuilder;
+    use winit::platform::unix::WindowExtUnix;
+
+    std::thread::sleep(std::time::Duration::from_secs(5));
+
+    let windowed_context = unsafe {
+        let xconn = winit_window.xlib_xconnection().unwrap();
+        let xwindow = winit_window.xlib_window().unwrap();
+        let mut context_builder = ContextBuilder::new().with_vsync(window.vsync());
+        context_builder.pf_reqs.alpha_bits = None;
+        context_builder.pf_reqs.depth_bits = None;
+        context_builder.pf_reqs.stencil_bits = None;
+        context_builder.pf_reqs.srgb = true;
+        let raw_context = context_builder
+            .build_raw_x11_context(xconn, xwindow)
+            .unwrap();
+        raw_context.make_current().unwrap()
+    };
+    println!(
+        "Pixel format of the window's GL context: {:?}",
+        windowed_context.get_pixel_format()
+    );
+
+    let gl = uni_gl::WebGLRenderingContext::new(Box::new(|s| windowed_context.get_proc_address(s)));
+    std::mem::drop(winit_window);
+    std::mem::drop(winit_windows);
+    std::mem::drop(window);
+    std::mem::drop(windows);
+    resources.insert(gl);
+
     let mut con = Console::new(CONSOLE_WIDTH, CONSOLE_HEIGHT);
 
     con.register_color("white", (255, 255, 255, 255));
@@ -108,7 +144,7 @@ fn draw(windows: Res<Windows>, winit_windows: Res<WinitWindows>) {
     if let Some(window) = windows.get_primary() {
         let winit_window = winit_windows.get_window(window.id()).unwrap();
         println!("{:?}", *winit_window);
-        // std::process::exit(0);
+        std::process::exit(0);
 
         // app.add_system_to_stage(
         //     bevy_render::stage::RENDER,
