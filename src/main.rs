@@ -1,14 +1,55 @@
 use bevy::{
+    app::startup_stage,
+    asset::{AssetLoader, LoadContext, LoadedAsset},
     input::keyboard::{ElementState, KeyboardInput},
     prelude::*,
+    type_registry::TypeUuid,
+    utils::BoxedFuture,
     winit::WinitWindows,
 };
-use doryen::{Console, TextAlign};
+use doryen::{set_texture_params, Program, TextAlign, DORYEN_FS, DORYEN_VS};
+use std::ops::{Deref, DerefMut};
 
 const CONSOLE_WIDTH: u32 = 80;
 const CONSOLE_HEIGHT: u32 = 60;
 
-type ScreenConsole = (f32, f32, Console);
+pub struct Console {
+    con: doryen::Console,
+    x: f32,
+    y: f32,
+}
+
+impl Console {
+    pub fn new(x: f32, y: f32, width: u32, height: u32) -> Self {
+        Self {
+            x,
+            y,
+            con: doryen::Console::new(width, height),
+        }
+    }
+}
+
+impl Deref for Console {
+    type Target = doryen::Console;
+    fn deref(&self) -> &doryen::Console {
+        &self.con
+    }
+}
+
+impl DerefMut for Console {
+    fn deref_mut(&mut self) -> &mut doryen::Console {
+        &mut self.con
+    }
+}
+
+pub struct Doryen {
+    consoles: Vec<Console>,
+    gl: uni_gl::WebGLRenderingContext,
+    font_texture: uni_gl::WebGLTexture,
+    font_asset: Handle<Font>,
+    font_is_loading: bool,
+    program: Program,
+}
 
 struct MyRoguelike {
     player_pos: (i32, i32),
@@ -29,7 +70,9 @@ pub fn main() {
 
     App::build()
         .add_default_plugins()
-        .add_startup_system(init.thread_local_system())
+        .add_asset::<Font>()
+        .init_asset_loader::<FontLoader>()
+        .add_startup_system_to_stage(startup_stage::PRE_STARTUP, init.thread_local_system())
         .add_resource(MyRoguelike::new())
         .add_system(input.system())
         .add_system_to_stage(stage::POST_UPDATE, render.system())
@@ -47,15 +90,11 @@ fn init(_world: &mut World, resources: &mut Resources) {
     use glutin::ContextBuilder;
     use winit::platform::unix::WindowExtUnix;
 
-    std::thread::sleep(std::time::Duration::from_secs(5));
-
     let windowed_context = unsafe {
         let xconn = winit_window.xlib_xconnection().unwrap();
         let xwindow = winit_window.xlib_window().unwrap();
         let mut context_builder = ContextBuilder::new().with_vsync(window.vsync());
         context_builder.pf_reqs.alpha_bits = None;
-        context_builder.pf_reqs.depth_bits = None;
-        context_builder.pf_reqs.stencil_bits = None;
         context_builder.pf_reqs.srgb = true;
         let raw_context = context_builder
             .build_raw_x11_context(xconn, xwindow)
@@ -68,23 +107,50 @@ fn init(_world: &mut World, resources: &mut Resources) {
     );
 
     let gl = uni_gl::WebGLRenderingContext::new(Box::new(|s| windowed_context.get_proc_address(s)));
+    gl.viewport(0, 0, window.width(), window.height());
+    gl.enable(uni_gl::Flag::Blend as i32);
+    gl.clear_color(0.0, 0.0, 0.0, 1.0);
+    gl.clear(uni_gl::BufferBit::Color);
+    gl.blend_equation(uni_gl::BlendEquation::FuncAdd);
+    gl.blend_func(
+        uni_gl::BlendMode::SrcAlpha,
+        uni_gl::BlendMode::OneMinusSrcAlpha,
+    );
+
     std::mem::drop(winit_window);
     std::mem::drop(winit_windows);
     std::mem::drop(window);
     std::mem::drop(windows);
-    resources.insert(gl);
 
-    let mut con = Console::new(CONSOLE_WIDTH, CONSOLE_HEIGHT);
+    let program = Program::new(&gl, DORYEN_VS, DORYEN_FS);
 
+    let font_texture = gl.create_texture();
+    gl.active_texture(0);
+    gl.bind_texture(&font_texture);
+    set_texture_params(&gl, true);
+
+    let mut con = Console::new(0.0, 0.0, CONSOLE_WIDTH, CONSOLE_HEIGHT);
     con.register_color("white", (255, 255, 255, 255));
     con.register_color("red", (255, 92, 92, 255));
     con.register_color("blue", (192, 192, 255, 255));
 
-    resources.insert(vec![(0.0f32, 0.0f32, con)]);
+    let asset_server = resources.get::<AssetServer>().unwrap();
+    let font_asset = asset_server.load("terminal_8x8.png");
+    std::mem::drop(asset_server);
+    println!("Loading Font {:?}", font_asset);
+
+    resources.insert(Doryen {
+        consoles: vec![con],
+        gl,
+        font_texture,
+        font_asset,
+        font_is_loading: true,
+        program,
+    });
 }
 
-fn render(game: Res<MyRoguelike>, mut cons: ResMut<Vec<ScreenConsole>>) {
-    let con = &mut cons[0].2;
+fn render(game: Res<MyRoguelike>, mut doryen: ResMut<Doryen>) {
+    let con = &mut doryen.consoles[0];
     con.rectangle(
         0,
         0,
@@ -134,10 +200,10 @@ fn render(game: Res<MyRoguelike>, mut cons: ResMut<Vec<ScreenConsole>>) {
         game.mouse_pos.1 as i32,
         (255, 255, 255, 255),
     );
-    println!(
-        "{}x{} / {}x{}",
-        game.player_pos.0, game.player_pos.1, game.mouse_pos.0 as i32, game.mouse_pos.1 as i32
-    );
+    // println!(
+    //     "{}x{} / {}x{}",
+    //     game.player_pos.0, game.player_pos.1, game.mouse_pos.0 as i32, game.mouse_pos.1 as i32
+    // );
 }
 
 fn draw(windows: Res<Windows>, winit_windows: Res<WinitWindows>) {
@@ -197,5 +263,45 @@ fn input(
     }
     for event in state.cursor_moved_event_reader.iter(&cursor_moved_events) {
         game.mouse_pos = (event.position.x(), event.position.y());
+    }
+}
+
+#[derive(TypeUuid)]
+#[uuid = "30bc3c3a-72ec-4a7e-91c8-a7133069da78"]
+pub struct Font(doryen::FontLoader);
+
+impl Deref for Font {
+    type Target = doryen::FontLoader;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Font {
+    pub fn new_from_bytes(buf: &[u8]) -> Font {
+        let mut font_loader = doryen::FontLoader::new();
+        font_loader.load_font_bytes(buf);
+        Font(font_loader)
+    }
+}
+
+#[derive(Default)]
+pub struct FontLoader;
+
+impl AssetLoader for FontLoader {
+    fn load<'a>(
+        &'a self,
+        bytes: &'a [u8],
+        load_context: &'a mut LoadContext,
+    ) -> BoxedFuture<'a, Result<(), anyhow::Error>> {
+        Box::pin(async move {
+            let font = Font::new_from_bytes(bytes);
+            load_context.set_default_asset(LoadedAsset::new(font));
+            Ok(())
+        })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["png"]
     }
 }
