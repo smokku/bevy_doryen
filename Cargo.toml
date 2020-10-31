@@ -1,23 +1,17 @@
 [package]
-name = "bv_rogue"
+name = "bevy_doryen"
 version = "0.1.0"
 authors = ["Tomasz Sterna <tomek@sterna.link>"]
 edition = "2018"
-
-[profile.dev.package."*"]
-opt-level = 3
 
 [dependencies]
 bevy = { git = "https://github.com/bevyengine/bevy", default-features = false, features = [
     "bevy_winit",
     "x11"
 ] }
-doryen = { version = "1.2", package = "doryen-rs", path = "../doryen-rs" }
-doryen-extra = { version = "0.1", features = ["doryen", "rng_support"] }
+doryen = { version = "*", package = "doryen-rs", path = "../doryen-rs" }
 uni-gl = "0.1"
 glutin = "0.25"
 winit = { version = "0.23.0", default-features = false }
-nanoserde = "0.1"
-ron = "0.6"
-log = "0.4"
 anyhow = "1.0"
+log = "0.4"
