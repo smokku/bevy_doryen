@@ -13,6 +13,7 @@ use std::ops::{Deref, DerefMut};
 const CONSOLE_WIDTH: u32 = 80;
 const CONSOLE_HEIGHT: u32 = 60;
 
+#[allow(dead_code)]
 pub struct Console {
     con: doryen::Console,
     x: f32,
@@ -26,6 +27,13 @@ impl Console {
             y,
             con: doryen::Console::new(width, height),
         }
+    }
+
+    pub fn pixel_to_pos(&self, x: f32, y: f32, width: u32, height: u32) -> (f32, f32) {
+        (
+            x / width as f32 * self.con.get_width() as f32,
+            y / height as f32 * self.con.get_height() as f32,
+        )
     }
 }
 
@@ -63,7 +71,6 @@ impl Doryen {
     }
 
     fn font_loaded(&mut self, font: &mut Font) {
-        println!("Font: {}x{}", font.char_width, font.char_height);
         self.font_is_loading = false;
 
         let img = font.img.take().unwrap();
@@ -104,6 +111,11 @@ impl Doryen {
         self.program
             .set_texture(&self.gl, uni_gl::WebGLTexture(self.font_texture.0));
     }
+
+    fn render(&mut self) {
+        self.program
+            .render_primitive(&self.gl, &self.consoles[0].con);
+    }
 }
 
 struct MyRoguelike {
@@ -131,7 +143,7 @@ pub fn main() {
         .add_resource(MyRoguelike::new())
         .add_system_to_stage(stage::PRE_UPDATE, input.system()) // game inputs
         .add_system_to_stage(stage::POST_UPDATE, render.system()) // render game state to console
-        .add_system_to_stage(stage::POST_UPDATE, draw.system()) // engine - consoles to screen
+        .add_system_to_stage(stage::POST_UPDATE, draw.thread_local_system()) // engine - consoles to screen
         .run();
 }
 
@@ -140,6 +152,8 @@ fn init(_world: &mut World, resources: &mut Resources) {
     let window = windows.get_primary().unwrap();
     let winit_windows = resources.get::<WinitWindows>().unwrap();
     let winit_window = winit_windows.get_window(window.id()).unwrap();
+    println!("window {}x{}", window.width(), window.height());
+    println!("winit_window {:?}", winit_window.inner_size(),);
 
     use glutin::platform::unix::RawContextExt;
     use glutin::ContextBuilder;
@@ -176,6 +190,8 @@ fn init(_world: &mut World, resources: &mut Resources) {
     std::mem::drop(winit_windows);
     std::mem::drop(window);
     std::mem::drop(windows);
+
+    resources.insert_thread_local(windowed_context);
 
     let program = Program::new(&gl, DORYEN_VS, DORYEN_FS);
 
@@ -264,30 +280,28 @@ fn render(game: Res<MyRoguelike>, mut doryen: ResMut<Doryen>) {
     // );
 }
 
-fn draw(mut doryen: ResMut<Doryen>, mut fonts: ResMut<Assets<Font>>) {
+fn draw(_world: &mut World, resources: &mut Resources) {
+    let mut doryen = resources.get_mut::<Doryen>().unwrap();
+    let mut fonts = resources.get_mut::<Assets<Font>>().unwrap();
     if doryen.font_is_loading {
         if let Some(font) = fonts.get_mut(&doryen.font_asset) {
             doryen.font_loaded(font);
         }
     }
-    // if let Some(window) = windows.get_primary() {
-    //     // let winit_window = winit_windows.get_window(window.id()).unwrap();
-    //     // println!("{:?}", *winit_window);
-    //     std::process::exit(0);
 
-    //     // app.add_system_to_stage(
-    //     //     bevy_render::stage::RENDER,
-    //     //     render_system.thread_local_system(),
-    //     // )
-    //     // https://github.com/jice-nospam/doryen-rs/blob/master/src/app.rs#L438
-    //     //
-    //     // https://github.com/bevyengine/bevy/blob/0dba0fe45f60cf06e802e5ff08710290ad7870d6/crates/bevy_wgpu/src/lib.rs#L24
-    //     // update: https://github.com/bevyengine/bevy/blob/0dba0fe45f60cf06e802e5ff08710290ad7870d6/crates/bevy_wgpu/src/wgpu_renderer.rs#L112
-    //     // https://github.com/bevyengine/bevy/blob/master/crates/bevy_wgpu/src/wgpu_renderer.rs#L66
-    //     // winit_window + https://github.com/rust-windowing/glutin/blob/master/glutin_examples/examples/raw_context.rs#L55
-    //     // https://github.com/grovesNL/glow/blob/main/examples/hello/src/main.rs#L73
-    //     // + pub window_surfaces: Arc<RwLock<HashMap<WindowId, wgpu::Surface>>>,
-    // }
+    if doryen.font_width > 0
+        && doryen.font_height > 0
+        && doryen.char_width > 0
+        && doryen.char_height > 0
+    {
+        doryen.render();
+
+        use glutin::{ContextWrapper, PossiblyCurrent};
+        let windowed_context = resources
+            .get_thread_local::<ContextWrapper<PossiblyCurrent, ()>>()
+            .unwrap();
+        windowed_context.swap_buffers().unwrap();
+    }
 }
 
 #[derive(Default)]
@@ -301,6 +315,8 @@ fn input(
     keyboard_input_events: Res<Events<KeyboardInput>>,
     cursor_moved_events: Res<Events<CursorMoved>>,
     mut game: ResMut<MyRoguelike>,
+    doryen: Res<Doryen>,
+    windows: Res<Windows>,
 ) {
     for event in state
         .keyboard_input_event_reader
@@ -324,8 +340,14 @@ fn input(
             }
         }
     }
+    let window = windows.get_primary().unwrap();
     for event in state.cursor_moved_event_reader.iter(&cursor_moved_events) {
-        game.mouse_pos = (event.position.x(), event.position.y());
+        game.mouse_pos = doryen.consoles[0].pixel_to_pos(
+            event.position.x(),
+            window.height() as f32 - event.position.y(),
+            window.width(),
+            window.height(),
+        );
     }
 }
 
