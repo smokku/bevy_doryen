@@ -234,8 +234,8 @@ fn init(_world: &mut World, resources: &mut Resources) {
 
 fn draw(_world: &mut World, resources: &mut Resources) {
     let mut doryen = resources.get_mut::<Doryen>().unwrap();
-    let mut fonts = resources.get_mut::<Assets<Font>>().unwrap();
     if doryen.font_is_loading {
+        let mut fonts = resources.get_mut::<Assets<Font>>().unwrap();
         if let Some(font) = fonts.get_mut(&doryen.font_asset) {
             doryen.font_loaded(font);
         }
@@ -246,6 +246,10 @@ fn draw(_world: &mut World, resources: &mut Resources) {
         && doryen.char_width > 0
         && doryen.char_height > 0
     {
+        let windows = resources.get::<Windows>().unwrap();
+        let window = windows.get_primary().unwrap();
+        doryen.gl.viewport(0, 0, window.width(), window.height());
+
         doryen.render();
 
         use glutin::{ContextWrapper, PossiblyCurrent};
