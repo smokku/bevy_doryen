@@ -9,7 +9,7 @@ bevy = { git = "https://github.com/bevyengine/bevy", default-features = false, f
     "bevy_winit",
     "x11"
 ] }
-doryen-rs = { version = "*", path = "../doryen-rs" }
+doryen-rs = { git = "https://github.com/smokku/doryen-rs" }
 uni-gl = "0.1"
 glutin = "0.25"
 winit = { version = "0.23.0", default-features = false }
