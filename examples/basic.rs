@@ -1,11 +1,10 @@
 // This example is adapted from https://github.com/jice-nospam/doryen-rs/blob/master/examples/basic.rs
 
 use bevy::{
-    input::keyboard::{ElementState, KeyboardInput},
+    input::{keyboard::KeyCode, Input},
     prelude::*,
 };
-use bevy_doryen::{doryen::TextAlign, AppOptions, DoryenApi, DoryenPlugin, InitFn, RenderFn};
-use std::sync::Arc;
+use bevy_doryen::{doryen::TextAlign, Doryen, DoryenConfig, DoryenPlugin};
 
 const CONSOLE_WIDTH: u32 = 80;
 const CONSOLE_HEIGHT: u32 = 45;
@@ -28,41 +27,35 @@ pub fn main() {
     log::info!("Starting basic example");
 
     App::build()
+        .add_resource(WindowDescriptor {
+            title: "MyRoguelike".to_string(),
+            width: CONSOLE_WIDTH * 8,
+            height: CONSOLE_HEIGHT * 8,
+            ..Default::default()
+        })
         .add_default_plugins()
-        // plugin stuff
-        .add_resource(AppOptions {
+        .add_plugin(DoryenPlugin)
+        .add_resource(DoryenConfig {
             console_width: CONSOLE_WIDTH,
             console_height: CONSOLE_HEIGHT,
-            screen_width: CONSOLE_WIDTH * 8,
-            screen_height: CONSOLE_HEIGHT * 8,
-            window_title: "my roguelike".to_owned(),
-            font_path: "terminal_8x8.png".to_owned(),
-            vsync: true,
-            fullscreen: false,
-            show_cursor: true,
-            resizable: true,
-            intercept_close_request: false,
-            max_fps: 0,
+            font: "terminal_8x8.png",
         })
-        .add_resource::<InitFn>(Arc::new(Box::new(init)))
-        .add_resource::<RenderFn>(Arc::new(Box::new(render)))
-        .add_plugin(DoryenPlugin)
-        // example stuff
         .add_resource(MyRoguelike::new())
-        .add_system(input.system())
+        .add_startup_system(init.system())
+        .add_system_to_stage(stage::PRE_UPDATE, input.system()) // game inputs
+        .add_system_to_stage(stage::POST_UPDATE, render.system()) // render game state to console
         .run();
 }
 
-fn init(api: &mut dyn DoryenApi, _app: &mut App) {
-    api.con().register_color("white", (255, 255, 255, 255));
-    api.con().register_color("red", (255, 92, 92, 255));
-    api.con().register_color("blue", (192, 192, 255, 255));
+fn init(mut doryen: ResMut<Doryen>) {
+    let con = doryen.con_mut();
+    con.register_color("white", (255, 255, 255, 255));
+    con.register_color("red", (255, 92, 92, 255));
+    con.register_color("blue", (192, 192, 255, 255));
 }
 
-fn render(app: &mut App, api: &mut dyn DoryenApi) {
-    let game = app.resources.get::<MyRoguelike>().unwrap();
-
-    let con = api.con();
+fn render(game: Res<MyRoguelike>, mut doryen: ResMut<Doryen>) {
+    let con = doryen.con_mut();
     con.rectangle(
         0,
         0,
@@ -114,41 +107,32 @@ fn render(app: &mut App, api: &mut dyn DoryenApi) {
     );
 }
 
-#[derive(Default)]
-struct EventsState {
-    keyboard_input_event_reader: EventReader<KeyboardInput>,
-    cursor_moved_event_reader: EventReader<CursorMoved>,
-}
-
 fn input(
-    mut state: Local<EventsState>,
-    keyboard_input_events: Res<Events<KeyboardInput>>,
+    keyboard_input: Res<Input<KeyCode>>,
+    mut cursor_moved_reader: Local<EventReader<CursorMoved>>,
     cursor_moved_events: Res<Events<CursorMoved>>,
     mut game: ResMut<MyRoguelike>,
+    doryen: Res<Doryen>,
+    windows: Res<Windows>,
 ) {
-    for event in state
-        .keyboard_input_event_reader
-        .iter(&keyboard_input_events)
-    {
-        if event.state == ElementState::Pressed {
-            match event.key_code {
-                Some(KeyCode::Left) => {
-                    game.player_pos.0 = (game.player_pos.0 - 1).max(1);
-                }
-                Some(KeyCode::Right) => {
-                    game.player_pos.0 = (game.player_pos.0 + 1).min(CONSOLE_WIDTH as i32 - 2);
-                }
-                Some(KeyCode::Up) => {
-                    game.player_pos.1 = (game.player_pos.1 - 1).max(1);
-                }
-                Some(KeyCode::Down) => {
-                    game.player_pos.1 = (game.player_pos.1 + 1).min(CONSOLE_HEIGHT as i32 - 2);
-                }
-                _ => {}
-            }
-        }
+    if keyboard_input.pressed(KeyCode::Left) {
+        game.player_pos.0 = (game.player_pos.0 - 1).max(1);
+    } else if keyboard_input.pressed(KeyCode::Right) {
+        game.player_pos.0 = (game.player_pos.0 + 1).min(CONSOLE_WIDTH as i32 - 2);
     }
-    for event in state.cursor_moved_event_reader.iter(&cursor_moved_events) {
-        game.mouse_pos = (event.position.x(), event.position.y());
+    if keyboard_input.pressed(KeyCode::Up) {
+        game.player_pos.1 = (game.player_pos.1 - 1).max(1);
+    } else if keyboard_input.pressed(KeyCode::Down) {
+        game.player_pos.1 = (game.player_pos.1 + 1).min(CONSOLE_HEIGHT as i32 - 2);
+    }
+
+    let window = windows.get_primary().unwrap();
+    for event in cursor_moved_reader.iter(&cursor_moved_events) {
+        game.mouse_pos = doryen.con().pixel_to_pos(
+            event.position.x(),
+            window.height() as f32 - event.position.y(),
+            window.width(),
+            window.height(),
+        );
     }
 }
