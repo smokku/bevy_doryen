@@ -9,7 +9,7 @@ use bevy::{
 use doryen_rs::{set_texture_params, Program, DORYEN_FS, DORYEN_VS};
 use std::ops::{Deref, DerefMut};
 
-pub use doryen_rs::{self as doryen};
+pub use doryen_rs::{self as doryen, Color};
 
 #[allow(dead_code)]
 pub struct Console {
