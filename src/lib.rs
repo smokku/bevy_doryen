@@ -70,8 +70,8 @@ impl Doryen {
         &mut self.consoles[0]
     }
 
-    pub fn load_font(&mut self, asset_server: Ref<AssetServer>, font_file: &str) {
-        self.font_asset = asset_server.load(font_file);
+    pub fn load_font<S: AsRef<str>>(&mut self, asset_server: Ref<AssetServer>, font_file: S) {
+        self.font_asset = asset_server.load(font_file.as_ref());
         self.font_is_loading = true;
         log::debug!("Loading Font {:?}", self.font_asset);
     }
@@ -139,10 +139,10 @@ impl Plugin for DoryenPlugin {
 }
 
 #[derive(Default)]
-pub struct DoryenConfig<'a> {
+pub struct DoryenConfig {
     pub console_width: u32,
     pub console_height: u32,
-    pub font: &'a str,
+    pub font: String,
 }
 
 fn init(_world: &mut World, resources: &mut Resources) {
@@ -199,9 +199,9 @@ fn init(_world: &mut World, resources: &mut Resources) {
 
     let (mut console_width, mut console_height, mut font) =
         if let Some(config) = resources.get::<DoryenConfig>() {
-            (config.console_width, config.console_height, config.font)
+            (config.console_width, config.console_height, config.font.clone())
         } else {
-            (0, 0, "")
+            (0, 0, String::new())
         };
     if console_width == 0 {
         console_width = 80;
@@ -224,7 +224,7 @@ fn init(_world: &mut World, resources: &mut Resources) {
     };
 
     if font.len() == 0 {
-        font = "terminal_8x8.png"
+        font = String::from("terminal_8x8.png");
     };
 
     doryen.load_font(resources.get::<AssetServer>().unwrap(), font);

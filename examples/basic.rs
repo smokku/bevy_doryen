@@ -38,7 +38,7 @@ pub fn main() {
         .add_resource(DoryenConfig {
             console_width: CONSOLE_WIDTH,
             console_height: CONSOLE_HEIGHT,
-            font: "terminal_8x8.png",
+            font: "terminal_8x8.png".into(),
         })
         .add_resource(MyRoguelike::new())
         .add_startup_system(init.system())
